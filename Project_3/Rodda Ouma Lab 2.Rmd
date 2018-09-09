@@ -1,0 +1,187 @@
+---
+title: "Machine Learning Naive Bayes Classifiers"
+author: "Rodda Ouma, Ethel and Ketryna"
+date: "July 28, 2018"
+output: html_document
+---
+
+```{r setup,results='hide', include=FALSE, message=FALSE, warning=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+##
+##install.packages("readxl")
+#install.packages("caret", dependencies = c("Depends","Suggests"))
+#install.packages("glue")
+#install.packages("naivebayes")
+
+library("caret")
+library("readxl")
+library("glue")
+library("naivebayes")
+
+library("MatrixModels")
+library("nplplot")
+library("caret")
+
+library("ggplot2")
+library("colorspace")
+```
+
+###Objective
+
+Prescriptive analytics is what happens when you take predictions made and use them to make strategic changes, e.g. to a business model in order to refocus or enhance the model. This laboratory will specifically look at credit risk whereby credit risk is the risk of default on a debt due to a borrower failing to make the required payments in a timely manner.The bank , as the financial institution, will analyze customer data to predict which customers might be credit risks. These predictions will then feed into risk management.
+
+This particular laboratory focuses on the use of Bayesian methods, specifically Naïve Bayesian Classifiers. We will use the brute force part which is we'll apply techniques to improve performance individually and manually to the original algorithms. 
+
+####Method 1
+
+Thi lab uses Credit Data. Data was imported and analyzed.Missing values were checked and the data does not have any missing values.
+```{r}
+library(readxl)
+creditData <- read_excel("/Users/Rodda Ouma/Documents/Harrisburg/Machine Learning/creditData.xlsx")
+
+##converting excel spreadsheet to dataframe
+
+creditData<-as.data.frame(creditData)
+str(creditData)
+
+##Exploring the data by checking for missing data
+sum(is.na(creditData))
+summary(creditData)
+```
+```{r}
+
+
+##converted to a factor because the Naives Bayes classification needs a categorical variable inorder to run.
+creditData$Creditability <-as.factor(creditData$Creditability)
+
+summary(creditData$Creditability)
+```
+
+#### Laboratory 2:Naives Bayes Classifiers, Part 1
+
+#####Training  a Model on the Data
+75%/25% split for training and test data, i.e. use 75% of the records for the training set and 25% of the records for the test set. 
+```{r}
+set.seed(12345)
+
+credit_rand <-creditData[order(runif(1000)),]
+credit_train <- credit_rand [1:750,]
+credit_test <- credit_rand [751:1000,]
+
+
+
+prop.table(table(credit_train$Creditability))
+
+prop.table(table(credit_test$Creditability))
+
+
+```
+
+
+We use the Naive bayes classification to build the Naive Bayes classification model.
+
+```{r}
+naive_model<-naive_bayes(Creditability ~ ., data = credit_train)
+
+naive_model
+```
+From the results above,68.5% of the creditors are worthy. we can then evaluate our model by lookign at the accuracy.
+
+#####Model Evaluation
+```{r}
+
+
+##Model Evaluation
+conf_nat <-table(predict(naive_model,credit_test),credit_test$Creditability)
+conf_nat
+
+(Accuracy<-sum(diag(conf_nat))/sum(conf_nat)*100)
+
+```
+
+From the results above, the model is 77.2 % accurate. We will then use other methods to see if we can improve the performance of the model using feature selection of the variables.
+
+####Method 2: Using Feature Selection.
+```{r}
+
+#we'll manually work to improve the performance of the Naïve Bayes classifier
+
+##We first randomize the data
+credit_rand2<- creditData[order(runif(1000)), ]
+str(credit_rand2)
+```
+The next step is to scale the data but we first remove the categorical variable in the first column.
+```{r}
+
+## we scale the data
+creditDataScaled <- scale(credit_rand2[,2:ncol(credit_rand2)], center=TRUE, scale = TRUE)
+View(creditDataScaled)
+
+```
+
+We then calculate the correlation among the variables using the Find correlation function. A cut off of 0.3 is used to determine the highly correlated variables which are then removed from the dataframe.
+
+```{r}
+##WE use correlation matrix to perform feature, i.e. variable selection. 
+##compute the correlation matrix
+#note that this does not include the class variable
+
+m <- cor(creditDataScaled)
+
+m
+
+##we want to find the varibales that are having correlation co-efficient more than 0.3
+highlycor <- findCorrelation(m, 0.30)
+highlycor
+
+#Remove highly correlated data and then subdivide train and tests
+
+filteredData <- credit_rand2[, -(highlycor)]
+
+```
+
+#####Model Training
+```{r}
+
+
+
+
+
+
+#Model split between train and test
+str(filteredData)
+filteredTraining <- filteredData[1:750, ]
+filteredTest <- filteredData[751:1000, ]
+
+##TRRain the Data 
+library(naivebayes)
+nb_model <- naive_bayes(Creditability ~ ., data=filteredTraining)
+
+## Evaluate the model
+filteredTestPred <- predict(nb_model, newdata = filteredTest)
+
+table(filteredTestPred, filteredTest$Creditability)
+```
+
+
+#####Model Evaluation
+
+```{r}
+(conf_nat <- table(filteredTestPred, filteredTest$Creditability))
+(Accuracy <- sum(diag(conf_nat))/sum(conf_nat)*100)
+
+```
+From the results above, the accuracy of the model reduced to 75%. This shows that the feature selection did not really improve the performance of the model. 
+
+Conclusion:
+
+* When we randomized the data we got slightly different accuracy Result of 75.2% (down from 77.2%).
+
+* Now True Positive is 53, True Negative 135 and False Negative - 45, and False Negative - 17.
+
+* The performance didn't improve due to randomization because the data set is too small, however the approach itself should work on a large data set.
+
+* In order to improve accuracy of dataset False Negative and False Positive should be as small as possible. For example, if False Negative and False Positive is zero or close to zero then our Accuracy result will be 100% or close to 100%.
+
+* In addition, True Positive and True Negative should significantly outweight False Positive and False Negative to get us to a higher accuracy level.
