@@ -1,0 +1,284 @@
+---
+title: "Mixed Methods or SemiSupervised Learning Method"
+author: "Rodda Ouma"
+date: "August 4, 2018"
+output: html_document
+---
+```{r setup,results='hide', include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("readxl")
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(rpart)
+library(cluster)
+library(NbClust)
+library(flexclust)
+
+```
+
+In this lab, we will perform unsupervised learning using k-Means clustering. Then, use the results of that analysis as input for a supervised learning analysis,
+specifically a classification analysis on this dataset: https://archive.ics.uci.edu/ml/datasets/Online+News+Popularity.
+
+```{r}
+
+OnlineNewsPopularity <- read_excel("~/Harrisburg/MachineLearning/Copy of OnlineNewsPopularity.xlsx")
+
+OnlineNews<-as.data.frame(OnlineNewsPopularity)
+
+summary(OnlineNews)
+sum(is.na(OnlineNews))
+
+news<-OnlineNews
+
+
+##reduced dataframe to 17 variables
+##renamed some columns
+newsShort <- data.frame(news$n_tokens_title, news$n_tokens_content, news$n_unique_tokens, news$n_non_stop_words, news$num_hrefs, news$num_imgs, news$num_videos, news$average_token_length, news$num_keywords, news$kw_max_max, news$global_sentiment_polarity, news$avg_positive_polarity, news$title_subjectivity, news$title_sentiment_polarity, news$abs_title_subjectivity, news$abs_title_sentiment_polarity, news$shares)
+colnames(newsShort) <- c("n_tokens_title", "n_tokens_content", "n_unique_tokens", "n_non_stop_words", "num_hrefs", "num_imgs", "num_videos", "average_token_length", "num_keywords", "kw_max_max", "global_sentiment_polarity", "avg_positive_polarity", "title_subjectivity", "title_sentiment_polarity", "abs_title_subjectivity", "abs_title_sentiment_polarity", "shares")
+
+```
+
+After renaming the columns to intuitive names, we select a random 100,000 rows.
+```{r}
+
+##SPlit the data for training and testing
+news_rand <- newsShort[order(runif(10000)), ]
+str(news_rand)
+set.seed(12345)
+
+##compare the distribution of randomized dataset from the original datset and 
+#there is no significant difference in the distribution
+summary(news_rand$shares)
+summary(news$shares)
+
+#Split the data into training and test datasets
+news_train <- news_rand[1:7500, ]
+str(news_train)
+news_test <- news_rand[7501:10000, ]
+
+```
+
+
+```{r}
+
+top.n.news <- function (news_rand,cols,n=5)
+
+{
+  #initialize a vector to hold customer being removed
+    idx.to.remove <-integer(0) 
+    
+    for (c in cols)
+    { 
+      #for every column in the date we pass this function
+      #sort column "c"  in descending order
+      #order retrns the sorted index rather than actual values sorted
+        col.order <-order(news_rand[,c],decreasing=T) 
+        
+    # Take the first n of the sorted column c to
+    #combine and de-duplicat the row ids that need to be removed
+        
+        idx <-head(col.order, n) #
+        idx.to.remove <-union(idx.to.remove,idx)
+    }
+    
+  #return the indexes of customers to be removed
+    return(idx.to.remove) 
+}
+
+#how many customers to be removed
+
+top.news <-top.n.news(news_rand,cols=1:5,n=5)
+
+length(top.news) 
+
+```
+
+With the function below, we will remove the top 20 customers from each category. 
+
+```{r}
+
+
+#How Many Customers to be Removed?
+
+news_rand[top.news,]  #Exammine the customers
+
+newsremove<-news_rand[-c(top.news),] 
+
+print(summary(newsremove))
+```
+
+
+
+
+```{r}
+
+
+set.seed(12345) #Set the seed for reproducibility
+#Try K from 2 to 20
+rng<-2:20
+
+#Number of times to run the K Means algorithm
+tries <-100
+
+#Set up an empty vector to hold all of points
+avg.totw.ss <-integer(length(rng))
+avg.totb.ss <- integer(length(rng))
+avg.tot.ss <- integer(length(rng))
+
+# For each value of the range variable
+for(v in rng){
+
+ #Set up an empty vectors to hold the tries
+ v.totw.ss <-integer(tries)
+ b.totb.ss <- integer(tries)
+ tot.ss <- integer(tries)
+
+ #Run kmeans
+ for(i in 1:tries){
+ k.temp <-kmeans(newsremove,centers=v)
+
+ #Store the total withinss
+ v.totw.ss[i] <-k.temp$tot.withinss
+
+ #Store the betweenss
+ b.totb.ss[i] <- k.temp$betweenss
+
+ #Store the total sum of squares
+ tot.ss[i] <- k.temp$totss
+ }
+
+#Average the withinss and betweenss
+ avg.totw.ss[v-1] <-mean(v.totw.ss)
+ avg.totb.ss[v-1] <-mean(b.totb.ss)
+ avg.tot.ss[v-1] <- mean(tot.ss)
+}
+
+plot(rng,avg.totw.ss,type="b", main="Total Within SS by Various K",
+ ylab="Average Total Within Sum of Squares",
+ xlab="Value of K")
+```
+
+```{r}
+
+plot(rng,avg.totb.ss,type="b", main="Total between SS by Various K",
+
+ ylab="Average Total Between Sum of Squares",
+ xlab="Value of K")
+
+```
+
+
+```{r}
+
+#Plot the ratio of betweenss/total ss and withinss / total ss for evaluation
+plot(rng,avg.totb.ss/avg.tot.ss,type="b", main="Ratio of between ss / the total ss by Various K",
+ ylab="Ratio Between SS / Total SS",
+ xlab="Value of K")
+abline(h=0.85, col="red")
+
+
+```
+
+
+```{r}
+plot(rng,avg.totb.ss,type="b", main="Total between SS by Various K",
+
+ ylab="Average Total Between Sum of Squares",
+ xlab="Value of K")
+```
+
+```{r}
+#Plot the ratio of betweenss/total ss and withinss / total ss for evaluation
+plot(rng,avg.totb.ss/avg.tot.ss,type="b", main="Ratio of between ss / the total ss by Various K",
+ ylab="Ratio Between SS / Total SS",
+ xlab="Value of K")
+abline(h=0.85, col="red")
+
+```
+
+```{r}
+plot(rng,avg.totw.ss/avg.tot.ss,type="b", main="Ratio of within ss / the total ss by Various K",
+ ylab="Ratio Between SS / Total SS",
+ xlab="Value of K")
+abline(h=0.15, col="red")
+
+```
+
+
+```{r}
+
+#Create the best number of clusters, Remove columns 1 and 2
+n<-5
+#return(as.integer(n))
+k <-kmeans(newsremove[,-c(1,2)], centers=n) 
+
+```
+Below is a print of all the analysis with 6 clusters.From the tables above, 6 clusters make sense.
+
+```{r}
+
+#Display&nbsp;cluster centers
+print(k$centers)
+
+#Give a count of data points in each cluster
+print(table(k$cluster))
+
+#Generate a plot of the clusters
+library(cluster)
+
+clusplot(newsremove, k$cluster, main='2D representation of the Cluster solution',
+ color=TRUE, shade=TRUE,
+ labels=2, lines=0)
+```
+
+Interpretation : with the analysis, this gives us a variablity of 28%.
+
+##Using the second method
+.
+
+```{r}
+wssplot <- function(news_rand, nc=15, seed=1234)
+  {
+ wss <- (nrow(data)-1)*sum(apply(news_rand,2,var))
+ 
+ for (i in 2:nc)
+   {
+ set.seed(seed)
+ wss[i] <- sum(kmeans(news_rand, centers=i)$withinss)
+ }
+ x<-plot(1:nc, wss, type="b", xlab="Number of Clusters",
+ ylab="Within groups sum of squares")
+ }
+```
+
+
+```{r}
+
+wssplot(news_rand)
+```
+
+From the plot above, 4 clusters make sense since we cannot gain further information.
+
+
+```{r}
+
+set.seed(1234)
+fit.km2 <- kmeans(news_rand, n, nstart=25)
+
+
+print(fit.km2$size)
+print(fit.km2$centers)
+print(aggregate(news_rand[-1], by=list(cluster=fit.km$cluster), mean))
+
+#Use a confusion or truth table to evaluate how well the k-Means analysis performed
+ct.km <- table(news_rand$``, fit.km$cluster)
+print(ct.km)
+
+##quantify the agreement between Class Identifier and cluster
+
+
+randIndex(ct.km)
+
+```

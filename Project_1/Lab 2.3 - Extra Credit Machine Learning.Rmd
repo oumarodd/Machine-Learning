@@ -1,0 +1,184 @@
+---
+title: "Lab 2.3- Machine Learning  Naive Bayes Classifiers"
+author: "Rodda Ouma, Ethel Mensah, Kateryna"
+date: "July 30, 2018"
+output: html_document
+---
+
+```{r setup, results='hide', include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+
+library("readxl")
+library("naivebayes")
+library(caret)
+library(ggplot2)
+library(lattice)
+
+```
+In this lab, we are focussing on the use of Bayesian methods, specifically Naïve Bayesian Classifiers . In Machine learning, we focus on improving the performance of a model,whether that is improving the performance of an algorithm or increasing learning, than it (machine learning) does on the specific results obtained from running an algorithm (as does data mining). 
+
+Hence, in this assignment we will look at two ways of improving a model(using brute force).The data used is the Online News popularity data , that can be found here:  https://archive.ics.uci.edu/ml/datasets/Online+News+Popularity
+
+###Method 1:(Original Unimproved Application)
+
+####Step1 :Data Exploration and Preparation
+
+```{r cars}
+library(readxl)
+OnlineNews <- read_excel("Copy of OnlineNewsPopularity.xlsx")
+OnlineNews<-as.data.frame(OnlineNews)
+news<-OnlineNews
+
+##check missing data
+str(news)
+sum(is.na(news))
+
+##reduced dataframe to 17 variables
+##renamed some columns
+newsShort <- data.frame(news$n_tokens_title, news$n_tokens_content, news$n_unique_tokens, news$n_non_stop_words, news$num_hrefs, news$num_imgs, news$num_videos, news$average_token_length, news$num_keywords, news$kw_max_max, news$global_sentiment_polarity, news$avg_positive_polarity, news$title_subjectivity, news$title_sentiment_polarity, news$abs_title_subjectivity, news$abs_title_sentiment_polarity, news$shares)
+colnames(newsShort) <- c("n_tokens_title", "n_tokens_content", "n_unique_tokens", "n_non_stop_words", "num_hrefs", "num_imgs", "num_videos", "average_token_length", "num_keywords", "kw_max_max", "global_sentiment_polarity", "avg_positive_polarity", "title_subjectivity", "title_sentiment_polarity", "abs_title_subjectivity", "abs_title_sentiment_polarity", "shares")
+
+
+```
+
+We introduce a new column called "popular" and it will be a categorical binary column with values(Yes and No). This will be based on values in the Shares column .1.e >1400 = "Yes".
+
+```{r}
+
+##introduced new column with nas
+newsShort$popular = rep('na', nrow(newsShort))
+summary(newsShort$shares)
+
+##Split the popular column into "yes" and "no" based on the values on the Shares column 
+for(i in 1:39644) {
+  if(newsShort$shares[i] >= 1400) {
+    newsShort$popular[i] = "yes"} 
+  else {newsShort$popular[i] = "no"}
+}
+
+
+```
+
+The data is then randomized before split in a 75%/25% fashion.
+
+```{r}
+
+##SPlit the data for training and testing
+news_rand <- newsShort[order(runif(10000)), ]
+set.seed(12345)
+
+
+##compare the distribution of randomized dataset from the original datset and 
+#there is no significant difference in the distribution
+summary(news_rand$shares)
+summary(news$shares)
+
+#Split the data into training and test datasets
+news_train <- news_rand[1:7500, ]
+news_test <- news_rand[7501:10000, ]
+
+```
+Distribution is checked between the test and training dataset just to ensure that there is no signifcant differences
+
+```{r}
+
+##check for distribution between the initial,test and train dataset
+##they have same distribution which is good since the difference is not high
+prop.table(table(news_train$popular))
+prop.table(table(news_test$popular))
+
+```
+
+####Step 2: Training a Model
+
+```{r}
+#model design
+nb_model <- naive_bayes(popular ~ ., data=news_train)
+nb_model
+```
+From the results above, 56.8% of the articles are popular. 
+
+####Step 3:Model evaluation 
+```{r}
+##stopped here
+news_Pred <- predict(nb_model, newdata = news_test)
+(conf_nat <- table(news_Pred, news_test$popular))
+summary(conf_nat)
+conf_nat
+
+(Accuracy <- sum(diag(conf_nat))/sum(conf_nat)*100)
+Accuracy
+
+```
+From the results above, the model is 82.6% accurate meaning that 82 out of 100 times, our model predicts the class of a record correctly. From the confusion matrix, the number of true positive is (1027) +true negatives(1038), while the number of false positives is (28) and false negatives(1038)
+
+###Method 2: Improving the Classifier by removing highly correlated varibles - Feature Selection 
+
+We will look at the varibales that are highly correlated to each other and remove them 
+from our model and check how different is the modified model's performance and accuracy.
+The method is also called feature selection.We hope that it will improve the accuracy of the model.
+
+####Step 1: Data Preparation and Exploration 
+Data is first randomized - 10,000rows selected
+
+```{r}
+
+news_rand2<-newsShort[order(runif(10000)), ]
+
+set.seed(12345)
+
+str(news_rand2)
+
+```
+
+Data is then scaled in order to calculate and find the highly correlated variables. The categorical variable is dropped from the dataset before the scaling process.
+```{r}
+
+##remove the factor variables first from the dataset then scale it
+##scaling the dataset credit_rand before using it as we want to bring all variables to a same scale inorder to identify correlations.
+news_scale1 <- news_rand2[, -c(18)]
+News_Scaled <- scale(news_scale1, center=TRUE, scale = TRUE)
+
+```
+
+A corrrelation matrix is then used to perform feature : variable selection/ identify variables that are highly correlated. Using the findCorrelation() function, we  identify features of a data set are correlated above/below a cutoff value. Our value is 0.3
+
+```{r}
+x<- cor(News_Scaled)
+newscor<- findCorrelation(x, 0.30)
+newscor
+
+#Remove highly correlated columns from the original dataset and then subdivide train and tests
+filterednews<- news_rand2[, -(newscor)]
+str(filterednews)
+```
+
+
+#####Step2:Model Training
+
+```{r}
+filteredNewsTrain <- filterednews[1:7500, ]
+filteredNewsTest <- filterednews[7501:10000, ]
+
+##Train the Data 
+library(naivebayes)
+newstrain_model <- naive_bayes(popular ~ ., data=filteredNewsTrain)
+
+```
+
+#####Step 3:Model Evaluation
+```{r}
+## Evaluate the model on the test dataset
+newspred <- predict(newstrain_model, newdata = filteredNewsTest)
+
+table(newspred, filteredNewsTest$popular)
+
+(conf_nat <- table(newspred, filteredNewsTest$popular))
+
+##ACcuracy didnt improve much . It is 82.9% it improved by 0.3% points.
+(Accuracy <- sum(diag(conf_nat))/sum(conf_nat)*100)
+
+```
+The accuracy improved by 0.3% to 82.9%. Removing the highly correlated variables didnt increase the accruacy that much.

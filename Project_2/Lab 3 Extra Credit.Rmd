@@ -1,0 +1,243 @@
+---
+title: "Lab  3 Extra Credit- Machine Learning"
+author: "Rodda Ouma, Ethel Mensah, Kateryna"
+date: "August 4, 2018"
+output: html_document
+---
+This lab is for integrating unsupervised and supervised learning techniques. We will do unsupervised learning using k-Means clustering. Then, use the results of that analysis as input for a supervised learning analysis, specifically a classification analysis. This will be the basis for a mixed methods or semi-supervised
+learning analysis. 
+
+We first import in the data from here: https://archive.ics.uci.edu/ml/datasets/Wholesale+customers and examine it by checking for missing data which is none in our dataset.
+
+```{r setup, results='hide', include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+customerdata<- read.csv ("C:/Users/Rodda Ouma/Documents/Harrisburg/MachineLearning/Lab 3/Wholesale customers data.csv")
+
+
+str(customerdata)
+
+summary(customerdata)
+
+sum(is.na(customerdata))
+
+
+```
+Then randomise the data before splitting it in between test and train datsets in a 25%:75%fashion.
+
+```{r} 
+set.seed(12345)
+
+customer_rand <- customerdata[order(runif(440)), ]
+
+customer_train <- customer_rand[1:330, ]
+customer_test <- customer_rand[331:440, ]
+
+```
+We now design the model
+
+
+```{r}
+top.n.custs <- function (customerdata,cols,n=5)
+
+{
+  #initialize a vector to hold customer being removed
+    idx.to.remove <-integer(0) 
+    
+    for (c in cols)
+    { 
+      #for every column in the date we pass this function
+      #sort column "c"  in descending order
+      #order retrns the sorted index rather than actual values sorted
+        col.order <-order(customerdata[,c],decreasing=T) 
+        
+    # Take the first n of the sorted column c to
+    #combine and de-duplicat the row ids that need to be removed
+        
+        idx <-head(col.order, n) #
+        idx.to.remove <-union(idx.to.remove,idx)
+    }
+    
+  #return the indexes of customers to be removed
+    return(idx.to.remove) 
+}
+
+#how many customers to be removed
+
+top.custs <-top.n.custs(customerdata,cols=1:5,n=5)
+
+length(top.custs) 
+
+
+```
+
+
+
+###Part 2: Wineset Dataset
+In this analysis, we will perform K-means analysis on the wine dataset from UCI:https://archive.ics.uci.edu/ml/datasets/wine+quality. 
+The dataset has 13 variables with  178 measurements.
+
+The dataset is imported and explored missing numebers
+```{r}
+
+library(readxl)
+WineData <- read_excel("~/Harrisburg/MachineLearning/Lab 3/WineDataset.xlsx")
+
+##Exploring the data by checking for missing data
+sum(is.na(WineData))
+summary(WineData)
+head(WineData)
+
+```
+
+Plot the within (cluster) sum of squares to determine the initial value for "k" using the wwsplot and NDClust functions.
+
+```{r}
+wssplot <- function(data, nc=15, seed=1234)
+  {
+ wss <- (nrow(data)-1)*sum(apply(WineData,2,var))
+ 
+ for (i in 2:nc)
+   {
+ set.seed(seed)
+ wss[i] <- sum(kmeans(data, centers=i)$withinss)
+ }
+ x<-plot(1:nc, wss, type="b", xlab="Number of Clusters",
+ ylab="Within groups sum of squares")
+ }
+```
+
+The first column is removed since it is a categorical variable and the rest of the dataset is run through the function created.
+
+```{r}
+##Remove the first column which is categorical
+wine<- scale(WineData[-1]) 
+
+
+wssplot(wine)
+```
+
+The k-Means analysis is then done using the variable "nc" for the number of clusters.
+```{r}
+
+#Start the k-Means analysis using the variable "nc" for the number of clusters
+
+set.seed(1234)
+
+nc <- NbClust(wine, min.nc=2, max.nc = 15, method = "kmeans")
+print(table(nc$Best.n[1,]))
+```
+
+From the barplot below,3 would be the appropriate number of clusters to choose. 
+```{r}
+
+barplot(table(nc$Best.n[1,]), xlab = "Number of Clusters", ylab = "Number of Criteria", main = "Number of Clusters Chosen by 26 Criteria") 
+
+#n <- readline(prompt = "Enter the best number of clusters: ")
+n <- as.integer(3)
+```
+
+
+```{r}
+
+#Conduct the k-Means analysis using the best number of clusters
+set.seed(1234)
+fit.km <- kmeans(wine, n, nstart=25)
+
+
+print(fit.km$size)
+print(fit.km$centers)
+print(aggregate(WineData[-1], by=list(cluster=fit.km$cluster), mean))
+
+
+```
+
+
+A confusion table is created to evaluate the performance of the model.RandIndex is used to quantify the agreement between the categorical variable:Class Identifier and the Cluster.
+
+```{r}
+
+#Use a confusion or truth table to evaluate how well the k-Means analysis performed
+ct.km <- table(WineData$`Class Identifier`, fit.km$cluster)
+print(ct.km)
+
+##quantify the agreement between Class Identifier and cluster
+
+
+randIndex(ct.km)
+```
+From the Rand Index above,  the value of 0.89 is not too bad given the scale ranges from  -1 (no agreement) to 1 (perfect agreement).
+
+```{r}
+
+ 
+clusplot(wine, fit.km$cluster, main='2D representation of the Cluster solution', color=TRUE, shade=TRUE, labels=2, lines=0) 
+```
+
+Interpretation:The analysis explains 55% of the multivariate data.
+
+
+We trained a classifier to classify our wine dataset using 3 clusters. It is clear that there were some misclassifications. But, after the model is designed. We can check for the accuracy to see the significance of those misclassifications.
+
+```{r}
+
+df <- data.frame(k=fit.km$cluster, wine)
+print(str(df))
+
+
+#Randomize the dataset
+rdf <- df[sample(1:nrow(df)), ]
+
+
+print(head(rdf))
+head(rdf)
+```
+
+The wine dataset is then split for training and testing. 
+
+```{r}
+winetrain <- rdf[1:(as.integer(.8*nrow(rdf))-1), ]
+winetest <- rdf[(as.integer(.8*nrow(rdf))):nrow(rdf), ]
+
+
+#Train the classifier and plot the results
+fit <- rpart(k ~ ., data=winetrain, method="class")
+
+fancyRpartPlot(fit) 
+```
+
+The prediction and accuracy of the model is then estimated. The accuracy of the model is now 97%.
+```{r}
+
+pred<-predict(fit, winetest, type="class") 
+
+print(table(pred,winetest$k)) 
+
+p<-table(pred, winetest$k)
+
+Accuracy<- (sum(diag(p))/sum(p)*100)
+
+Accuracy
+
+```
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
